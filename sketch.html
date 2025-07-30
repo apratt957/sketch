@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Full Window p5.js Sketch</title>
+  <style>
+    body, html {
+      margin: 0; 
+      padding: 0; 
+      overflow: hidden; 
+      height: 100%; 
+      background: #000;
+    }
+    #defaultCanvas0 {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+  <script>
+    let waves = [];
+const colors = ['#FF4136', '#0074D9', '#FFDC00', '#2ECC40'];
+const colorNames = ['RED', 'BLUE', 'YELLOW', 'GREEN'];
+const waveHeight = 50;
+const waveLength = 200;
+const shiftSpeed = 0.1;
+const topMargin = 75;
+let bottomMargin;
+let clickedIndex = -1;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  textAlign(CENTER, CENTER);
+  textFont('Helvetica');
+  textStyle(BOLD);
+  bottomMargin = windowHeight - 10;
+  for (let i = 0; i < colors.length; i++) {
+    let baseY = height / (colors.length + 1) * (i + 1);
+    waves.push({
+      baseY: baseY,
+      yBase: baseY,
+      targetYBase: baseY,
+      speed: 0.01 + 0.015 * i,
+      normalSpeed: 0.01 + 0.015 * i,
+      slowSpeed: (0.01 + 0.015 * i) * 0.2,
+      direction: 1,
+      baseColor: color(colors[i]),
+      colorName: colorNames[i],
+      phase: random(TWO_PI),
+      textOffset: i * 30,
+      fadeAmt: 0, // 0 = original color, 1 = full black
+    });
+  }
+}
+
+function draw() {
+  background(30);
+
+  let hoveredIndex = -1;
+  if (clickedIndex === -1) {
+    for (let i = 0; i < waves.length; i++) {
+      let yTop = waves[i].yBase - waveHeight * 1.5;
+      let yBottom = waves[i].yBase + waveHeight * 1.5;
+      if (mouseY >= yTop && mouseY <= yBottom) {
+        hoveredIndex = i;
+        break;
+      }
+    }
+  }
+
+  for (let i = 0; i < waves.length; i++) {
+    let wave = waves[i];
+
+    if (clickedIndex !== -1) {
+      wave.targetYBase = (i === clickedIndex) ? topMargin : bottomMargin;
+      wave.speed = wave.normalSpeed;
+      wave.direction = (i === clickedIndex) ? -1 : 1;
+      // Fade other waves to black, clicked wave to original color
+      wave.fadeAmt = lerp(wave.fadeAmt, (i === clickedIndex) ? 0 : 1, 0.05);
+    } else {
+      wave.targetYBase = wave.baseY;
+      wave.direction = 1;
+      wave.speed = (i === hoveredIndex) ? wave.slowSpeed : wave.normalSpeed;
+      // Reset all fades to original color
+      wave.fadeAmt = lerp(wave.fadeAmt, 0, 0.05);
+    }
+
+    wave.yBase = lerp(wave.yBase, wave.targetYBase, shiftSpeed);
+    wave.phase += wave.speed * wave.direction;
+  }
+
+  for (let i = 0; i < waves.length; i++) {
+    let wave = waves[i];
+    let shapePoints = [];
+
+    for (let x = 0; x <= width; x += 10) {
+      let y = wave.yBase + sin((x / waveLength) * TWO_PI + wave.phase) * waveHeight;
+      shapePoints.push({ x, y });
+    }
+
+    let col = lerpColor(wave.baseColor, color(0), wave.fadeAmt);
+    noStroke();
+    fill(col);
+    beginShape();
+    for (let pt of shapePoints) vertex(pt.x, pt.y);
+    vertex(width, height);
+    vertex(0, height);
+    endShape(CLOSE);
+
+    drawWaveText(wave, shapePoints);
+  }
+}
+
+function drawWaveText(wave, points) {
+  fill(255);
+  noStroke();
+  let textStr = wave.colorName;
+  let chars = textStr.split('');
+  let numChars = chars.length;
+
+  let midStart = Math.floor(points.length / 2 - numChars / 2) + floor(wave.textOffset / 10);
+  for (let i = 0; i < numChars; i++) {
+    let idx = midStart + i;
+    if (idx < 1 || idx >= points.length - 1) continue;
+
+    let pt = points[idx];
+    let prev = points[idx - 1];
+    let next = points[idx + 1];
+    let angle = atan2(next.y - prev.y, next.x - prev.x);
+
+    push();
+    translate(pt.x, pt.y - 12);
+    rotate(angle);
+    textSize(22);
+    text(chars[i], 0, 0);
+    pop();
+  }
+}
+
+function mousePressed() {
+  if (clickedIndex !== -1) {
+    clickedIndex = -1;
+    return;
+  }
+
+  for (let i = 0; i < waves.length; i++) {
+    let wave = waves[i];
+    let yTop = wave.yBase - waveHeight * 1.5;
+    let yBottom = wave.yBase + waveHeight * 1.5;
+    if (mouseY >= yTop && mouseY <= yBottom) {
+      clickedIndex = i;
+      break;
+    }
+  }
+}
+
+// For mobile touches
+let touchStartTime = 0;
+const holdThreshold = 400; // ms
+
+function touchStarted() {
+  touchStartTime = millis();
+  if (touches.length > 0) {
+    touchStartX = touches[0].x;
+    touchStartY = touches[0].y;
+  }
+  return false;
+}
+
+function touchEnded() {
+  let touchDuration = millis() - touchStartTime;
+  if (touchDuration < holdThreshold) {
+    handleClick(touchStartX, touchStartY);
+  }
+  return false;
+}
+
+// Shared handler for click or tap
+function handleClick(x, y) {
+  if (clickedIndex !== -1) {
+    // Reset if already opened
+    clickedIndex = -1;
+    return;
+  }
+  // Otherwise, try opening wave under pointer
+  for (let i = 0; i < waves.length; i++) {
+    let wave = waves[i];
+    let yTop = wave.yBase - waveHeight * 1.5;
+    let yBottom = wave.yBase + waveHeight * 1.5;
+    if (y >= yTop && y <= yBottom) {
+      clickedIndex = i;
+      break;
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  bottomMargin = height - 10; // 10 px padding from bottom
+
+  // Recalculate baseY for each wave to keep them evenly spaced vertically
+  for (let i = 0; i < waves.length; i++) {
+    waves[i].baseY = height / (waves.length + 1) * (i + 1);
+
+    // If wave is not opened, reset yBase to baseY so it moves smoothly to new position
+    if (clickedIndex !== i) {
+      waves[i].yBase = waves[i].baseY;
+    }
+  }
+}</script>
