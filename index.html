@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Full Window p5.js Sketch</title>
+  <title>Wave Entry Sketch</title>
   <style>
     body, html {
-      margin: 0; 
-      padding: 0; 
-      overflow: hidden; 
-      height: 100%; 
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
       background: #000;
     }
     #defaultCanvas0 {
@@ -18,17 +18,22 @@
   </style>
 </head>
 <body>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
-  <script>
-    let waves = [];
+<script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+<script>
+let waves = [];
 const colors = ['#FF4136', '#0074D9', '#FFDC00', '#2ECC40'];
 const colorNames = ['RED', 'BLUE', 'YELLOW', 'GREEN'];
 const waveHeight = 50;
 const waveLength = 200;
-const shiftSpeed = 0.1;
+const entrySpeed = 0.05;
+const interactionSpeed = 0.1;
 const topMargin = 75;
 let bottomMargin;
 let clickedIndex = -1;
+let hasEntered = false;
+let enterOpacity = 255;
+let animatingEntry = false;
+
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -36,12 +41,12 @@ function setup() {
   textFont('Helvetica');
   textStyle(BOLD);
   bottomMargin = windowHeight - 10;
+
   for (let i = 0; i < colors.length; i++) {
-    let baseY = height / (colors.length + 1) * (i + 1);
     waves.push({
-      baseY: baseY,
-      yBase: baseY,
-      targetYBase: baseY,
+      baseY: height / (colors.length + 1) * (i + 1),
+      yBase: height + 200, // Start offscreen
+      targetYBase: height + 200,
       speed: 0.01 + 0.015 * i,
       normalSpeed: 0.01 + 0.015 * i,
       slowSpeed: (0.01 + 0.015 * i) * 0.2,
@@ -50,7 +55,7 @@ function setup() {
       colorName: colorNames[i],
       phase: random(TWO_PI),
       textOffset: i * 30,
-      fadeAmt: 0, // 0 = original color, 1 = full black
+      fadeAmt: 0,
     });
   }
 }
@@ -58,7 +63,16 @@ function setup() {
 function draw() {
   background(30);
 
+  if (!hasEntered) {
+    fill(255, enterOpacity);
+    textSize(32);
+    text("ENTER", width / 2, height / 2);
+    return;
+  }
+
   let hoveredIndex = -1;
+  let currentShiftSpeed = animatingEntry ? entrySpeed : interactionSpeed;
+
   if (clickedIndex === -1) {
     for (let i = 0; i < waves.length; i++) {
       let yTop = waves[i].yBase - waveHeight * 1.5;
@@ -77,17 +91,15 @@ function draw() {
       wave.targetYBase = (i === clickedIndex) ? topMargin : bottomMargin;
       wave.speed = wave.normalSpeed;
       wave.direction = (i === clickedIndex) ? -1 : 1;
-      // Fade other waves to black, clicked wave to original color
       wave.fadeAmt = lerp(wave.fadeAmt, (i === clickedIndex) ? 0 : 1, 0.05);
     } else {
       wave.targetYBase = wave.baseY;
       wave.direction = 1;
       wave.speed = (i === hoveredIndex) ? wave.slowSpeed : wave.normalSpeed;
-      // Reset all fades to original color
       wave.fadeAmt = lerp(wave.fadeAmt, 0, 0.05);
     }
 
-    wave.yBase = lerp(wave.yBase, wave.targetYBase, shiftSpeed);
+    wave.yBase = lerp(wave.yBase, wave.targetYBase, currentShiftSpeed);
     wave.phase += wave.speed * wave.direction;
   }
 
@@ -111,6 +123,10 @@ function draw() {
 
     drawWaveText(wave, shapePoints);
   }
+  if (animatingEntry) {
+      let done = waves.every(w => abs(w.yBase - w.targetYBase) < 10);
+      if (done) animatingEntry = false;
+    }
 }
 
 function drawWaveText(wave, points) {
@@ -119,7 +135,6 @@ function drawWaveText(wave, points) {
   let textStr = wave.colorName;
   let chars = textStr.split('');
   let numChars = chars.length;
-
   let midStart = Math.floor(points.length / 2 - numChars / 2) + floor(wave.textOffset / 10);
   for (let i = 0; i < numChars; i++) {
     let idx = midStart + i;
@@ -140,6 +155,11 @@ function drawWaveText(wave, points) {
 }
 
 function mousePressed() {
+  if (!hasEntered) {
+    enterScene();
+    return;
+  }
+
   if (clickedIndex !== -1) {
     clickedIndex = -1;
     return;
@@ -156,35 +176,28 @@ function mousePressed() {
   }
 }
 
-// For mobile touches
+// Mobile
 let touchStartTime = 0;
-const holdThreshold = 400; // ms
-
+const holdThreshold = 400;
 function touchStarted() {
   touchStartTime = millis();
-  if (touches.length > 0) {
-    touchStartX = touches[0].x;
-    touchStartY = touches[0].y;
-  }
+  if (!hasEntered) enterScene();
   return false;
 }
 
 function touchEnded() {
   let touchDuration = millis() - touchStartTime;
-  if (touchDuration < holdThreshold) {
-    handleClick(touchStartX, touchStartY);
+  if (touchDuration < holdThreshold && hasEntered) {
+    handleClick(touches[0]?.x || mouseX, touches[0]?.y || mouseY);
   }
   return false;
 }
 
-// Shared handler for click or tap
 function handleClick(x, y) {
   if (clickedIndex !== -1) {
-    // Reset if already opened
     clickedIndex = -1;
     return;
   }
-  // Otherwise, try opening wave under pointer
   for (let i = 0; i < waves.length; i++) {
     let wave = waves[i];
     let yTop = wave.yBase - waveHeight * 1.5;
@@ -196,17 +209,27 @@ function handleClick(x, y) {
   }
 }
 
+function enterScene() {
+  hasEntered = true;
+  animatingEntry = true;
+  for (let i = 0; i < waves.length; i++) {
+    waves[i].yBase = height + 200; // start offscreen
+    waves[i].targetYBase = height / (waves.length + 1) * (i + 1);
+    waves[i].baseY = waves[i].targetYBase;
+  }
+}
+
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  bottomMargin = height - 10; // 10 px padding from bottom
+  bottomMargin = height - 10;
 
-  // Recalculate baseY for each wave to keep them evenly spaced vertically
   for (let i = 0; i < waves.length; i++) {
     waves[i].baseY = height / (waves.length + 1) * (i + 1);
-
-    // If wave is not opened, reset yBase to baseY so it moves smoothly to new position
     if (clickedIndex !== i) {
-      waves[i].yBase = waves[i].baseY;
+      waves[i].yBase = hasEntered ? waves[i].baseY : height + 200;
     }
   }
-}</script>
+}
+</script>
+</body>
+</html>
